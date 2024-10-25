@@ -1,0 +1,30 @@
+[prometheus]
+host = '127.0.0.1'
+port = 9090
+reset = '1800s'
+
+[[chains]]
+id = 'chain_A'
+grpc_addr = 'http://127.0.0.1:9090'
+[[chains.addresses]]
+address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
+denom = 'uom'
+min_balance = '200000000000'
+role = 'personal'
+refresh = '300s'
+[[chains.addresses]]
+address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6m2'
+denom = 'uom'
+min_balance = '200000000000'
+role = 'relayer'
+
+
+[[chains]]
+id = 'chain_B'
+grpc_addr = 'http://127.0.0.1:9090'
+[[chains.addresses]]
+address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
+denom = 'uom'
+min_balance = 'sth100000000000000000000000000000000000000000000000000000000000'
+role = 'faucet'
+refresh = '300s'

@@ -1,0 +1,64 @@
+name: Rust test
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - v[0-9]+.*
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-test:
+    runs-on: ubuntu-latest-x64-xlarge
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+      - name: Set up Rust caches
+        uses: actions/cache@v4
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('./Cargo.lock') }}
+      - name: Run unit tests
+        run: cargo test --all --verbose
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest-x64-xlarge
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Run Rust fmt
+        run: cargo fmt
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest-x64-xlarge
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Run Cargo Clippy
+        run: cargo clippy

@@ -1,0 +1,47 @@
+[package]
+name = "cosmos-balance-watcher"
+version = "0.1.0"
+authors = ["Leo Pang <leo.pang@mantra.finance>"]
+edition = "2021"
+
+[[bin]]
+name = "balance-watcher"
+
+[features]
+default = ["std", "eyre_tracer"]
+std = [
+    "flex-error/std"
+]
+eyre_tracer = ["flex-error/eyre_tracer"]
+
+[dependencies]
+structopt = "0.3"
+serde_derive = "1.0.130"
+humantime-serde = "1.0.0"
+anyhow = "1.0.45"
+tower = "0.5.1"
+http = "1.1.0"
+http-body = "1.0.1"
+tonic = { version = "0.12.0", features = ["tls", "tls-roots"] }
+tokio = { version = "1.15.0", features = ["full"] }
+warp = "0.3"
+prometheus = { version = "0.13.4", features = ["process"] }
+web3 = { version = "0.19.0", default-features = false, features = ["http-rustls-tls"] }
+lazy_static = "1.4"
+futures = { version = "0.3", default-features = false }
+rand = "0.8.5"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4.14"
+env_logger = "0.11"
+flex-error = { version = "0.4.2", default-features = false }
+toml = "0.8"
+tracing = "0.1.29"
+cosmos-sdk-proto = "0.26.0"
+tendermint-rpc = { version = "0.40.0", features = ["http-client"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+test-log = { version = "0.2.7", features = ["trace"] }
+actix-rt = "2.2.0"
+more-asserts = "0.3.1"
