@@ -1,4 +1,4 @@
-FROM rust:1.67.0-buster as builder
+FROM rust:1.82-slim-bullseye as builder
 
 WORKDIR /usr/src/app
 COPY . .
@@ -8,8 +8,8 @@ RUN cargo build --release
 
 RUN cp target/release/balance-watcher /balance-watcher
 
-FROM rust:1.67.0-buster
+FROM rust:1.82-slim-bullseye
 WORKDIR /usr/src/app
 COPY --from=builder /balance-watcher /usr/bin/balance-watcher
 
-CMD ["/usr/bin/balance-watcher", "start", "-c", "/usr/src/app/chains.toml"]
+ENTRYPOINT ["/usr/bin/balance-watcher", "start"]
