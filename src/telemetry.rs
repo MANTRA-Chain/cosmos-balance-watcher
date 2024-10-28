@@ -10,7 +10,7 @@ lazy_static! {
     )
     .expect("metric can be created");
     pub static ref ACCOUNT_STATUS_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
-        Opts::new("account_status", "Account Status. 0: > min_balance, 1: < min_balance"),
+        Opts::new("account_status", "Account Status. 0: > min_balance, 1: <= min_balance"),
         &["chain_id", "address", "denom", "min_balance", "role", "balance_url"]
     )
     .expect("metric can be created");
@@ -21,6 +21,72 @@ lazy_static! {
     .expect("metric can be created");
 
     pub static ref REGISTRY: Registry = Registry::new();
+}
+
+/// A setter for ACCOUNT_BALANCE_COLLECTOR, make sure all the labels are set and types are correct
+pub fn account_balance_setter(
+    chain_id: &str,
+    address: &str,
+    denom: &str,
+    min_balance: &str,
+    role: &str,
+    balance_url: &str,
+    balance: i64,
+) {
+    ACCOUNT_BALANCE_COLLECTOR
+        .with_label_values(&[
+            chain_id,
+            address,
+            denom,
+            min_balance,
+            role,
+            balance_url
+        ])
+        .set(balance);
+}
+
+/// A setter for ACCOUNT_STATUS_COLLECTOR, make sure all the labels are set and types are correct
+pub fn account_status_setter(
+    chain_id: &str,
+    address: &str,
+    denom: &str,
+    min_balance: &str,
+    role: &str,
+    balance_url: &str,
+    status: i64,
+) {
+    ACCOUNT_STATUS_COLLECTOR
+        .with_label_values(&[
+            chain_id,
+            address,
+            denom,
+            min_balance,
+            role,
+            balance_url
+        ])
+        .set(status);
+}
+
+/// A setter for ACCOUNT_QUERY_STATUS_COLLECTOR, make sure all the labels are set and types are correct
+pub fn account_query_status_setter(
+    chain_id: &str,
+    address: &str,
+    denom: &str,
+    min_balance: &str,
+    role: &str,
+    balance_url: &str,
+    status: i64,
+) {
+    ACCOUNT_QUERY_STATUS_COLLECTOR
+        .with_label_values(&[
+            chain_id,
+            address,
+            denom,
+            min_balance,
+            role,
+            balance_url
+        ])
+        .set(status);
 }
 
 pub fn register_custom_metrics() {
@@ -43,26 +109,20 @@ pub async fn metrics_handler() -> Result<impl Reply, Rejection> {
     if let Err(e) = encoder.encode(&REGISTRY.gather(), &mut buffer) {
         error!("could not encode custom metrics: {:?}", e);
     };
-    let mut res = match String::from_utf8(buffer.clone()) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("custom metrics could not be from_utf8'd: {}", e);
-            String::default()
-        }
-    };
+    let mut res = String::from_utf8(buffer.clone()).unwrap_or_else(|e| {
+        error!("custom metrics could not be from_utf8'd: {}", e);
+        String::default()
+    });
     buffer.clear();
 
     let mut buffer = Vec::new();
     if let Err(e) = encoder.encode(&prometheus::gather(), &mut buffer) {
         error!("could not encode prometheus metrics: {:?}", e);
     };
-    let res_custom = match String::from_utf8(buffer.clone()) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("prometheus metrics could not be from_utf8'd: {}", e);
-            String::default()
-        }
-    };
+    let res_custom = String::from_utf8(buffer.clone()).unwrap_or_else(|e| {
+        error!("prometheus metrics could not be from_utf8'd: {}", e);
+        String::default()
+    });
     buffer.clear();
 
     res.push_str(&res_custom);

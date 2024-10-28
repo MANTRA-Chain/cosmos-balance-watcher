@@ -1,6 +1,7 @@
 use crate::config;
 use crate::telemetry::{
     ACCOUNT_BALANCE_COLLECTOR, ACCOUNT_QUERY_STATUS_COLLECTOR, ACCOUNT_STATUS_COLLECTOR,
+    account_balance_setter, account_status_setter, account_query_status_setter
 };
 use log::{error, info, warn};
 use tendermint_rpc::Url;
@@ -32,7 +33,7 @@ pub async fn account_status_collector(config: config::Config) {
 }
 
 pub async fn track_account_status(
-    gprc_addr: Option<Url>,
+    grpc_addr: Option<Url>,
     evm_addr: Option<Url>,
     chain_id: String,
     chain_address: config::Address,
@@ -47,16 +48,8 @@ pub async fn track_account_status(
     let role = &chain_address.role;
     let min_balance = &chain_address.min_balance;
     let coin_type = &chain_address.coin_type;
-    let display_min_balance = if let Some(i) = decimal_place {
-        let base = 10u128;
-        let divisor = base.checked_pow(*i).unwrap();
-        min_balance
-            .clone()
-            .parse::<u128>()
-            .unwrap()
-            .checked_div(divisor)
-            .unwrap_or_default()
-            .to_string()
+    let display_min_balance = if let Some(dp) = decimal_place {
+        from_atomics(min_balance, *dp)
     } else {
         min_balance.clone()
     };
@@ -70,36 +63,34 @@ pub async fn track_account_status(
             .get_balance(
                 address.into(),
                 denom.into(),
-                gprc_addr.clone(),
+                grpc_addr.clone(),
                 evm_addr.clone(),
             )
             .await
         {
             Ok(balance) => {
-                ACCOUNT_QUERY_STATUS_COLLECTOR
-                    .with_label_values(&[
-                        &chain_id.clone(),
-                        hex_address.as_ref().unwrap_or(address),
-                        display_denom.as_ref().unwrap_or(denom),
-                        &display_min_balance,
-                        role,
-                        balance_url.as_ref().unwrap_or(&"".to_string()),
-                    ])
-                    .set(0);
+                account_query_status_setter(
+                    &chain_id,
+                    hex_address.as_ref().unwrap_or(address),
+                    display_denom.as_ref().unwrap_or(denom),
+                    &display_min_balance,
+                    role,
+                    balance_url.as_ref().unwrap_or(&"".to_string()),
+                    0,
+                );
                 balance
             }
             Err(error) => {
                 error!("{} and retry next refresh", error);
-                ACCOUNT_QUERY_STATUS_COLLECTOR
-                    .with_label_values(&[
-                        &chain_id.clone(),
-                        hex_address.as_ref().unwrap_or(address),
-                        display_denom.as_ref().unwrap_or(denom),
-                        &display_min_balance,
-                        role,
-                        balance_url.as_ref().unwrap_or(&"".to_string()),
-                    ])
-                    .set(1);
+                account_query_status_setter(
+                    &chain_id,
+                    hex_address.as_ref().unwrap_or(address),
+                    display_denom.as_ref().unwrap_or(denom),
+                    &display_min_balance,
+                    role,
+                    balance_url.as_ref().unwrap_or(&"".to_string()),
+                    1,
+                );
                 continue;
             }
         };
@@ -107,49 +98,53 @@ pub async fn track_account_status(
             "The latest balance={}{} with address ({}) for {} on ({})",
             balance, denom, address, role, chain_id
         );
-        if balance.parse::<u128>().unwrap() < min_balance.parse::<u128>().unwrap() {
+        if balance.parse::<u128>().unwrap() <= min_balance.parse::<u128>().unwrap() {
             warn!("The current balance {}{denom} is less than {}{denom} with address ({}) for {} on ({})", balance, min_balance, address, role, chain_id, denom=denom);
-            ACCOUNT_STATUS_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(1);
+            account_status_setter(
+                &chain_id,
+                hex_address.as_ref().unwrap_or(address),
+                display_denom.as_ref().unwrap_or(denom),
+                &display_min_balance,
+                role,
+                balance_url.as_ref().unwrap_or(&"".to_string()),
+                1,
+            );
         } else {
-            ACCOUNT_STATUS_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(0);
+            account_status_setter(
+                &chain_id,
+                hex_address.as_ref().unwrap_or(address),
+                display_denom.as_ref().unwrap_or(denom),
+                &display_min_balance,
+                role,
+                balance_url.as_ref().unwrap_or(&"".to_string()),
+                0,
+            );
         }
-        if let Some(i) = decimal_place {
-            let base = 10u128;
-            let divisor = base.checked_pow(*i).unwrap();
-            let display_balance = balance
-                .clone()
-                .parse::<u128>()
-                .unwrap()
-                .checked_div(divisor)
-                .unwrap_or_default();
-            ACCOUNT_BALANCE_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
+
+        if chain_address.disable_balance != Some(true) {
+            if let Some(dp) = decimal_place {
+                let display_balance = from_atomics(&balance, *dp);
+                account_balance_setter(
+                    &chain_id,
                     hex_address.as_ref().unwrap_or(address),
                     display_denom.as_ref().unwrap_or(denom),
                     &display_min_balance,
                     role,
                     balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(display_balance as i64);
+                    display_balance.parse::<i64>().unwrap(),
+                );
+            }
         }
     }
+}
+
+fn from_atomics(number: &str, decimal_place: u32) -> String {
+    let base = 10u128;
+    let divisor = base.checked_pow(decimal_place).unwrap();
+    number
+        .parse::<u128>()
+        .unwrap()
+        .checked_div(divisor)
+        .unwrap_or_default()
+        .to_string()
 }
