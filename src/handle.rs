@@ -48,16 +48,8 @@ pub async fn track_account_status(
     let role = &chain_address.role;
     let min_balance = &chain_address.min_balance;
     let coin_type = &chain_address.coin_type;
-    let display_min_balance = if let Some(i) = decimal_place {
-        let base = 10u128;
-        let divisor = base.checked_pow(*i).unwrap();
-        min_balance
-            .clone()
-            .parse::<u128>()
-            .unwrap()
-            .checked_div(divisor)
-            .unwrap_or_default()
-            .to_string()
+    let display_min_balance = if let Some(dp) = decimal_place {
+        from_atomics(min_balance, *dp)
     } else {
         min_balance.clone()
     };
@@ -128,25 +120,32 @@ pub async fn track_account_status(
                 0,
             );
         }
-        if let Some(i) = decimal_place {
-            let base = 10u128;
-            let divisor = base.checked_pow(*i).unwrap();
-            let display_balance = balance
-                .clone()
-                .parse::<u128>()
-                .unwrap()
-                .checked_div(divisor)
-                .unwrap_or_default();
-            ACCOUNT_BALANCE_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
+
+        if !chain_address.disable_balance {
+            if let Some(dp) = decimal_place {
+                let display_balance = from_atomics(&balance, *dp);
+                account_balance_setter(
+                    &chain_id,
                     hex_address.as_ref().unwrap_or(address),
                     display_denom.as_ref().unwrap_or(denom),
                     &display_min_balance,
                     role,
                     balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(display_balance as i64);
+                    display_balance.parse::<i64>().unwrap(),
+                );
+            }
         }
     }
+}
+
+fn from_atomics(number: &String, decimal_place: u32) -> String {
+    let base = 10u128;
+    let divisor = base.checked_pow(decimal_place).unwrap();
+    number
+        .clone()
+        .parse::<u128>()
+        .unwrap()
+        .checked_div(divisor)
+        .unwrap_or_default()
+        .to_string()
 }
