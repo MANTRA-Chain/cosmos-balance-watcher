@@ -10,12 +10,14 @@ grpc_addr = 'http://127.0.0.1:9090'
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
 denom = 'uom'
 min_balance = '200000000000'
+disable_balance = true
 role = 'personal'
 refresh = '300s'
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6m2'
 denom = 'uom'
 min_balance = '200000000000'
+disable_balance = false
 role = 'relayer'
 
 
@@ -26,5 +28,6 @@ grpc_addr = 'http://127.0.0.1:9090'
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
 denom = 'uom'
 min_balance = '1000000000000000000000000000000000'
+disable_balance = false
 role = 'faucet'
 refresh = '300s'

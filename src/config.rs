@@ -73,6 +73,7 @@ pub struct Address {
     pub denom: String,
     pub display_denom: Option<String>,
     pub decimal_place: Option<u32>,
+    pub disable_balance: bool,
     pub balance_url: Option<String>,
     #[serde(default = "default::coin_type")]
     pub coin_type: CoinType,
