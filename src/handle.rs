@@ -1,6 +1,7 @@
 use crate::config;
 use crate::telemetry::{
     ACCOUNT_BALANCE_COLLECTOR, ACCOUNT_QUERY_STATUS_COLLECTOR, ACCOUNT_STATUS_COLLECTOR,
+    account_balance_setter, account_status_setter, account_query_status_setter
 };
 use log::{error, info, warn};
 use tendermint_rpc::Url;
@@ -76,30 +77,28 @@ pub async fn track_account_status(
             .await
         {
             Ok(balance) => {
-                ACCOUNT_QUERY_STATUS_COLLECTOR
-                    .with_label_values(&[
-                        &chain_id.clone(),
-                        hex_address.as_ref().unwrap_or(address),
-                        display_denom.as_ref().unwrap_or(denom),
-                        &display_min_balance,
-                        role,
-                        balance_url.as_ref().unwrap_or(&"".to_string()),
-                    ])
-                    .set(0);
+                account_query_status_setter(
+                    &chain_id,
+                    hex_address.as_ref().unwrap_or(address),
+                    display_denom.as_ref().unwrap_or(denom),
+                    &display_min_balance,
+                    role,
+                    balance_url.as_ref().unwrap_or(&"".to_string()),
+                    0,
+                );
                 balance
             }
             Err(error) => {
                 error!("{} and retry next refresh", error);
-                ACCOUNT_QUERY_STATUS_COLLECTOR
-                    .with_label_values(&[
-                        &chain_id.clone(),
-                        hex_address.as_ref().unwrap_or(address),
-                        display_denom.as_ref().unwrap_or(denom),
-                        &display_min_balance,
-                        role,
-                        balance_url.as_ref().unwrap_or(&"".to_string()),
-                    ])
-                    .set(1);
+                account_query_status_setter(
+                    &chain_id,
+                    hex_address.as_ref().unwrap_or(address),
+                    display_denom.as_ref().unwrap_or(denom),
+                    &display_min_balance,
+                    role,
+                    balance_url.as_ref().unwrap_or(&"".to_string()),
+                    1,
+                );
                 continue;
             }
         };
@@ -109,27 +108,25 @@ pub async fn track_account_status(
         );
         if balance.parse::<u128>().unwrap() < min_balance.parse::<u128>().unwrap() {
             warn!("The current balance {}{denom} is less than {}{denom} with address ({}) for {} on ({})", balance, min_balance, address, role, chain_id, denom=denom);
-            ACCOUNT_STATUS_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(1);
+            account_status_setter(
+                &chain_id,
+                hex_address.as_ref().unwrap_or(address),
+                display_denom.as_ref().unwrap_or(denom),
+                &display_min_balance,
+                role,
+                balance_url.as_ref().unwrap_or(&"".to_string()),
+                1,
+            );
         } else {
-            ACCOUNT_STATUS_COLLECTOR
-                .with_label_values(&[
-                    &chain_id.clone(),
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                ])
-                .set(0);
+            account_status_setter(
+                &chain_id,
+                hex_address.as_ref().unwrap_or(address),
+                display_denom.as_ref().unwrap_or(denom),
+                &display_min_balance,
+                role,
+                balance_url.as_ref().unwrap_or(&"".to_string()),
+                0,
+            );
         }
         if let Some(i) = decimal_place {
             let base = 10u128;
