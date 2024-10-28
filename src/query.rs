@@ -11,12 +11,12 @@ impl CoinType {
         &self,
         address: String,
         denom: String,
-        grcp_addr: Option<Url>,
+        grpc_addr: Option<Url>,
         evm_addr: Option<Url>,
     ) -> Result<String> {
         match self {
             CoinType::COSMOS => {
-                get_cosmos_balance(address, denom, grcp_addr.unwrap().to_string()).await
+                get_cosmos_balance(address, denom, grpc_addr.unwrap().to_string()).await
             }
             CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
         }

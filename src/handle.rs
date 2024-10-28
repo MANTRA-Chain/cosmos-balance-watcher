@@ -32,7 +32,7 @@ pub async fn account_status_collector(config: config::Config) {
 }
 
 pub async fn track_account_status(
-    gprc_addr: Option<Url>,
+    grpc_addr: Option<Url>,
     evm_addr: Option<Url>,
     chain_id: String,
     chain_address: config::Address,
@@ -70,7 +70,7 @@ pub async fn track_account_status(
             .get_balance(
                 address.into(),
                 denom.into(),
-                gprc_addr.clone(),
+                grpc_addr.clone(),
                 evm_addr.clone(),
             )
             .await
