@@ -98,7 +98,7 @@ pub async fn track_account_status(
             "The latest balance={}{} with address ({}) for {} on ({})",
             balance, denom, address, role, chain_id
         );
-        if balance.parse::<u128>().unwrap() < min_balance.parse::<u128>().unwrap() {
+        if balance.parse::<u128>().unwrap() <= min_balance.parse::<u128>().unwrap() {
             warn!("The current balance {}{denom} is less than {}{denom} with address ({}) for {} on ({})", balance, min_balance, address, role, chain_id, denom=denom);
             account_status_setter(
                 &chain_id,
@@ -121,7 +121,7 @@ pub async fn track_account_status(
             );
         }
 
-        if !chain_address.disable_balance {
+        if chain_address.disable_balance != Some(true) {
             if let Some(dp) = decimal_place {
                 let display_balance = from_atomics(&balance, *dp);
                 account_balance_setter(
@@ -138,11 +138,10 @@ pub async fn track_account_status(
     }
 }
 
-fn from_atomics(number: &String, decimal_place: u32) -> String {
+fn from_atomics(number: &str, decimal_place: u32) -> String {
     let base = 10u128;
     let divisor = base.checked_pow(decimal_place).unwrap();
     number
-        .clone()
         .parse::<u128>()
         .unwrap()
         .checked_div(divisor)

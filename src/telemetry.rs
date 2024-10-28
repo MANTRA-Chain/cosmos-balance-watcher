@@ -10,7 +10,7 @@ lazy_static! {
     )
     .expect("metric can be created");
     pub static ref ACCOUNT_STATUS_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
-        Opts::new("account_status", "Account Status. 0: > min_balance, 1: < min_balance"),
+        Opts::new("account_status", "Account Status. 0: > min_balance, 1: <= min_balance"),
         &["chain_id", "address", "denom", "min_balance", "role", "balance_url"]
     )
     .expect("metric can be created");
