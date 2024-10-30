@@ -7,38 +7,54 @@ id = 'mantra-dukong-1'
 grpc_addr = 'https://grpc.dukong.mantrachain.io'
 [[chains.addresses]]
 address = 'mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
+role = 'test1'
+refresh = '60s'
+disable_balance = true
+balance_url = 'https://www.mintscan.io/mantra-testnet/address/mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
+[[chains.addresses.coins]]
 coin_type = "COSMOS"
 denom = 'uom'
 display_denom = 'OM'
 min_balance = '200000000000'
 decimal_place = 6
-role = 'test1'
-refresh = '60s'
-disable_balance = true
-balance_url = 'https://www.mintscan.io/mantra-testnet/address/mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
+[[chains.addresses.coins]]
+coin_type = "COSMOS"
+denom = 'factory/mantra1qwm8p82w0ygaz3duf0y56gjf8pwh5ykmgnqmtm/uUSDC'
+display_denom = 'TF-USDC'
+min_balance = '200000000000'
+decimal_place = 6
+[[chains.addresses.coins]]
+coin_type = "COSMOS"
+denom = 'ibc/D4673DC468A86C668204C7A29BFDC3511FF36D512C38C9EB9215872E9653B239'
+display_denom = 'IBC-USDY'
+min_balance = '200000000000'
+decimal_place = 18
+
 [[chains.addresses]]
 address = 'mantra1ea4hlqfskjvn0ldenw8gv7jjdzrljcchm9vhhu'
+role = 'test2'
+refresh = '60s'
+disable_balance = false
+balance_url = 'https://www.mintscan.io/mantra-testnet/address/mantra1ea4hlqfskjvn0ldenw8gv7jjdzrljcchm9vhhu'
+[[chains.addresses.coins]]
 coin_type = "COSMOS"
 denom = 'uom'
 display_denom = 'OM'
 min_balance = '1000000000000'
 decimal_place = 6
-role = 'test2'
-refresh = '60s'
-disable_balance = false
-balance_url = 'https://www.mintscan.io/mantra-testnet/address/mantra1ea4hlqfskjvn0ldenw8gv7jjdzrljcchm9vhhu'
 
 [[chains]]
 id = '1'
 evm_addr = 'https://eth.llamarpc.com'
 [[chains.addresses]]
 address = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
+role = 'vitalik'
+refresh = '300s'
+disable_balance = false
+balance_url = 'https://etherscan.io/address/0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
+[[chains.addresses.coins]]
 coin_type = "EVM"
 denom = 'wei'
 display_denom = 'ETH'
 min_balance = '10000000000000000000'
 decimal_place = 18
-role = 'vitalik'
-refresh = '300s'
-disable_balance = false
-balance_url = 'https://etherscan.io/address/0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'

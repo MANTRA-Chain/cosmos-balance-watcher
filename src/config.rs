@@ -69,19 +69,26 @@ pub struct Address {
     pub address: String,
     pub hex_address: Option<String>,
     pub role: String,
+    pub disable_balance: Option<bool>,
+    pub balance_url: Option<String>,
+    #[serde(default = "default::refresh", with = "humantime_serde")]
+    pub refresh: Duration,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub coins: Vec<Coin>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Coin {
     pub min_balance: String,
     pub denom: String,
     pub display_denom: Option<String>,
     pub decimal_place: Option<u32>,
-    pub disable_balance: Option<bool>,
-    pub balance_url: Option<String>,
     #[serde(default = "default::coin_type")]
     pub coin_type: CoinType,
-    #[serde(default = "default::refresh", with = "humantime_serde")]
-    pub refresh: Duration,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum CoinType {
     COSMOS,
     EVM,
@@ -93,6 +100,7 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config, Error> {
 
     let config = toml::from_str::<Config>(&config_toml[..]).map_err(Error::config_decode)?;
     check_parse_u128(config.clone())?;
+    check_single_evm_coin_type_in_address(config.clone())?;
     Ok(config)
 }
 
@@ -100,10 +108,31 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config, Error> {
 pub fn check_parse_u128(config: Config) -> Result<(), Error> {
     for chain_config in config.chains.iter() {
         for chain_address in chain_config.addresses.iter() {
-            chain_address
-                .min_balance
-                .parse::<u128>()
-                .map_err(Error::config_parse_u128)?;
+            for coin in chain_address.coins.iter() {
+                coin.min_balance
+                    .parse::<u128>()
+                    .map_err(Error::config_parse_u128)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+// Check if there is more than one EVM coin type in the address
+pub fn check_single_evm_coin_type_in_address(config: Config) -> Result<(), Error> {
+    for chain_config in config.chains.iter() {
+        for chain_address in chain_config.addresses.iter() {
+            let mut evm_count = 0;
+            for coin in chain_address.coins.iter() {
+                if coin.coin_type == CoinType::EVM {
+                    evm_count += 1;
+                }
+            }
+            if evm_count > 1 {
+                return Err(Error::config_single_evm_coin_type_in_address(
+                    chain_address.address.clone(),
+                ));
+            }
         }
     }
     Ok(())

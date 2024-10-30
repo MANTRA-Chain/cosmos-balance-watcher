@@ -1,7 +1,7 @@
+use lazy_static::lazy_static;
 use log::error;
 use prometheus::{IntGaugeVec, Opts, Registry};
 use warp::{Rejection, Reply};
-use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref ACCOUNT_BALANCE_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
@@ -16,7 +16,7 @@ lazy_static! {
     .expect("metric can be created");
     pub static ref ACCOUNT_QUERY_STATUS_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
         Opts::new("account_query_status", "Account Query Status show the account balance query is successful or not. 0: can access, 1: cannot access"),
-        &["chain_id", "address", "denom", "min_balance", "role", "balance_url"]
+        &["chain_id", "address", "role", "balance_url", "query_endpoint_url"]
     )
     .expect("metric can be created");
 
@@ -34,14 +34,7 @@ pub fn account_balance_setter(
     balance: i64,
 ) {
     ACCOUNT_BALANCE_COLLECTOR
-        .with_label_values(&[
-            chain_id,
-            address,
-            denom,
-            min_balance,
-            role,
-            balance_url
-        ])
+        .with_label_values(&[chain_id, address, denom, min_balance, role, balance_url])
         .set(balance);
 }
 
@@ -56,14 +49,7 @@ pub fn account_status_setter(
     status: i64,
 ) {
     ACCOUNT_STATUS_COLLECTOR
-        .with_label_values(&[
-            chain_id,
-            address,
-            denom,
-            min_balance,
-            role,
-            balance_url
-        ])
+        .with_label_values(&[chain_id, address, denom, min_balance, role, balance_url])
         .set(status);
 }
 
@@ -71,21 +57,13 @@ pub fn account_status_setter(
 pub fn account_query_status_setter(
     chain_id: &str,
     address: &str,
-    denom: &str,
-    min_balance: &str,
     role: &str,
     balance_url: &str,
+    query_endpoint_url: &str,
     status: i64,
 ) {
     ACCOUNT_QUERY_STATUS_COLLECTOR
-        .with_label_values(&[
-            chain_id,
-            address,
-            denom,
-            min_balance,
-            role,
-            balance_url
-        ])
+        .with_label_values(&[chain_id, address, role, balance_url, query_endpoint_url])
         .set(status);
 }
 

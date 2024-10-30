@@ -19,6 +19,18 @@ define_error! {
             [ TraceError<std::num::ParseIntError> ]
             |_| { "invalid number" },
 
+        ConfigSingleEvmCoinTypeInAddress
+            { address: String }
+            |e| { format_args!(
+                "invalid configuration: Address {} has more than one EVM coin type", e.address)
+            },
+
+        QueryError
+            { source: String, endpoint: String }
+            |e| { format_args!(
+                "{} (endpoint: {})", e.source, e.endpoint)
+            },
+
         GrpcTransport
             [ TraceError<TransportError> ]
             |_| { "error in underlying transport when making gRPC call" },

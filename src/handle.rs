@@ -1,9 +1,11 @@
 use crate::config;
 use crate::telemetry::{
+    account_balance_setter, account_query_status_setter, account_status_setter,
     ACCOUNT_BALANCE_COLLECTOR, ACCOUNT_QUERY_STATUS_COLLECTOR, ACCOUNT_STATUS_COLLECTOR,
-    account_balance_setter, account_status_setter, account_query_status_setter
 };
+use cosmos_sdk_proto::cosmos::base::v1beta1::Coin;
 use log::{error, info, warn};
+use std::collections::HashMap;
 use tendermint_rpc::Url;
 
 pub async fn account_status_collector(config: config::Config) {
@@ -32,6 +34,16 @@ pub async fn account_status_collector(config: config::Config) {
     }
 }
 
+#[derive(Eq, Hash, PartialEq)]
+pub struct CoinEntity {
+    pub denom: String,
+    pub display_denom: String,
+    pub display_min_balance: String,
+    pub min_balance: String,
+    pub coin_type: config::CoinType,
+    pub decimal_place: Option<u32>,
+}
+
 pub async fn track_account_status(
     grpc_addr: Option<Url>,
     evm_addr: Option<Url>,
@@ -40,98 +52,124 @@ pub async fn track_account_status(
 ) {
     let address = &chain_address.address;
     let hex_address = &chain_address.hex_address;
-    let denom = &chain_address.denom;
-    let display_denom = &chain_address.display_denom;
-    let decimal_place = &chain_address.decimal_place;
     let refresh = &chain_address.refresh;
     let balance_url = &chain_address.balance_url;
     let role = &chain_address.role;
-    let min_balance = &chain_address.min_balance;
-    let coin_type = &chain_address.coin_type;
-    let display_min_balance = if let Some(dp) = decimal_place {
-        from_atomics(min_balance, *dp)
-    } else {
-        min_balance.clone()
-    };
-    let mut balance: String;
     let mut collect_interval = tokio::time::interval(refresh.to_owned());
+    let mut coin_map: HashMap<config::CoinType, Vec<CoinEntity>> = HashMap::new();
+    for coin in chain_address.coins.iter() {
+        let display_min_balance = if let Some(dp) = coin.decimal_place {
+            from_atomics(&coin.min_balance, dp)
+        } else {
+            coin.min_balance.clone()
+        };
+        let coin_type = coin.coin_type.clone();
+        let coin_entity = CoinEntity {
+            denom: coin.denom.clone(),
+            display_denom: coin.display_denom.clone().unwrap_or(coin.denom.clone()),
+            display_min_balance,
+            min_balance: coin.min_balance.clone(),
+            coin_type: coin_type.clone(),
+            decimal_place: coin.decimal_place,
+        };
+        coin_map.entry(coin_type).or_default().push(coin_entity);
+    }
 
     loop {
         collect_interval.tick().await;
+        for (coin_type, coin_entities) in coin_map.iter() {
+            let tmp_balances = match coin_type
+                .get_balances(
+                    address.into(),
+                    coin_entities,
+                    grpc_addr.clone(),
+                    evm_addr.clone(),
+                )
+                .await
+            {
+                Ok((balances, query_endpoint_url)) => {
+                    account_query_status_setter(
+                        &chain_id,
+                        hex_address.as_ref().unwrap_or(address),
+                        role,
+                        balance_url.as_ref().unwrap_or(&"".to_string()),
+                        &query_endpoint_url,
+                        0,
+                    );
+                    balances
+                }
+                Err(e) => {
+                    error!("{} and retry next refresh", e);
+                    let error_string = e.to_string();
+                    let query_endpoint_url = error_string
+                        .split(" (endpoint: ")
+                        .last()
+                        .unwrap_or("")
+                        .trim_end_matches(')');
+                    account_query_status_setter(
+                        &chain_id,
+                        hex_address.as_ref().unwrap_or(address),
+                        role,
+                        balance_url.as_ref().unwrap_or(&"".to_string()),
+                        query_endpoint_url,
+                        1,
+                    );
+                    continue;
+                }
+            };
 
-        balance = match coin_type
-            .get_balance(
-                address.into(),
-                denom.into(),
-                grpc_addr.clone(),
-                evm_addr.clone(),
-            )
-            .await
-        {
-            Ok(balance) => {
-                account_query_status_setter(
-                    &chain_id,
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                    0,
-                );
-                balance
-            }
-            Err(error) => {
-                error!("{} and retry next refresh", error);
-                account_query_status_setter(
-                    &chain_id,
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                    1,
-                );
-                continue;
-            }
-        };
-        info!(
-            "The latest balance={}{} with address ({}) for {} on ({})",
-            balance, denom, address, role, chain_id
-        );
-        if balance.parse::<u128>().unwrap() <= min_balance.parse::<u128>().unwrap() {
-            warn!("The current balance {}{denom} is less than {}{denom} with address ({}) for {} on ({})", balance, min_balance, address, role, chain_id, denom=denom);
-            account_status_setter(
-                &chain_id,
-                hex_address.as_ref().unwrap_or(address),
-                display_denom.as_ref().unwrap_or(denom),
-                &display_min_balance,
-                role,
-                balance_url.as_ref().unwrap_or(&"".to_string()),
-                1,
-            );
-        } else {
-            account_status_setter(
-                &chain_id,
-                hex_address.as_ref().unwrap_or(address),
-                display_denom.as_ref().unwrap_or(denom),
-                &display_min_balance,
-                role,
-                balance_url.as_ref().unwrap_or(&"".to_string()),
-                0,
-            );
-        }
+            for coin_entity in coin_entities {
+                let default_coin = Coin {
+                    denom: coin_entity.denom.clone(),
+                    amount: "0".to_owned(),
+                };
+                let coin = tmp_balances
+                    .iter()
+                    .find(|coin| coin.denom == coin_entity.denom)
+                    .unwrap_or(&default_coin);
+                if coin.amount.parse::<u128>().unwrap()
+                    <= coin_entity.min_balance.parse::<u128>().unwrap()
+                {
+                    warn!("The current balance {}{denom} is less than {}{denom} with address ({}) for {} on ({})", coin.amount, coin_entity.min_balance, address, role, chain_id, denom=coin.denom);
 
-        if chain_address.disable_balance != Some(true) {
-            if let Some(dp) = decimal_place {
-                let display_balance = from_atomics(&balance, *dp);
-                account_balance_setter(
-                    &chain_id,
-                    hex_address.as_ref().unwrap_or(address),
-                    display_denom.as_ref().unwrap_or(denom),
-                    &display_min_balance,
-                    role,
-                    balance_url.as_ref().unwrap_or(&"".to_string()),
-                    display_balance.parse::<i64>().unwrap(),
+                    account_status_setter(
+                        &chain_id,
+                        hex_address.as_ref().unwrap_or(address),
+                        &coin_entity.display_denom,
+                        &coin_entity.display_min_balance,
+                        role,
+                        balance_url.as_ref().unwrap_or(&"".to_string()),
+                        1,
+                    );
+                } else {
+                    account_status_setter(
+                        &chain_id,
+                        hex_address.as_ref().unwrap_or(address),
+                        &coin_entity.display_denom,
+                        &coin_entity.display_min_balance,
+                        role,
+                        balance_url.as_ref().unwrap_or(&"".to_string()),
+                        0,
+                    );
+                }
+
+                if chain_address.disable_balance != Some(true) {
+                    if let Some(dp) = coin_entity.decimal_place {
+                        let display_balance = from_atomics(&coin.amount, dp);
+                        account_balance_setter(
+                            &chain_id,
+                            hex_address.as_ref().unwrap_or(address),
+                            &coin_entity.display_denom,
+                            &coin_entity.display_min_balance,
+                            role,
+                            balance_url.as_ref().unwrap_or(&"".to_string()),
+                            display_balance.parse::<i64>().unwrap(),
+                        );
+                    }
+                }
+                info!(
+                    "The latest balance={}{} with address ({}) for {} on ({})",
+                    coin.amount, coin.denom, address, role, chain_id
                 );
             }
         }

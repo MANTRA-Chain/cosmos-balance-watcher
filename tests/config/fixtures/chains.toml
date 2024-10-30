@@ -8,26 +8,31 @@ id = 'chain_A'
 grpc_addr = 'http://127.0.0.1:9090'
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
-denom = 'uom'
-min_balance = '200000000000'
 disable_balance = true
 role = 'personal'
 refresh = '300s'
-[[chains.addresses]]
-address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6m2'
+[[chains.addresses.coins]]
 denom = 'uom'
 min_balance = '200000000000'
+[[chains.addresses.coins]]
+denom = 'ibc/D4673DC468A86C668204C7A29BFDC3511FF36D512C38C9EB9215872E9653B239'
+min_balance = '200000000000'
+[[chains.addresses]]
+address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6m2'
 disable_balance = false
 role = 'relayer'
-
+[[chains.addresses.coins]]
+denom = 'uom'
+min_balance = '200000000000'
 
 [[chains]]
 id = 'chain_B'
 grpc_addr = 'http://127.0.0.1:9090'
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
-denom = 'uom'
-min_balance = '1000000000000000000000000000000000'
 disable_balance = false
 role = 'faucet'
 refresh = '300s'
+[[chains.addresses.coins]]
+denom = 'uom'
+min_balance = '1000000000000000000000000000000000'

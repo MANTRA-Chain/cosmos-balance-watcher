@@ -1,6 +1,11 @@
 use crate::config::CoinType;
+use crate::handle::CoinEntity;
 use anyhow::Result;
-use cosmos_sdk_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryBalanceRequest};
+use cosmos_sdk_proto::cosmos::bank::v1beta1::{
+    query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest,
+};
+use cosmos_sdk_proto::cosmos::base::query::v1beta1::PageRequest;
+use cosmos_sdk_proto::cosmos::base::v1beta1::Coin;
 use http::uri::Uri;
 use std::str::FromStr;
 use tendermint_rpc::Url;
@@ -21,6 +26,39 @@ impl CoinType {
             CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
         }
     }
+    pub async fn get_balances(
+        &self,
+        address: String,
+        coin_entities: &[CoinEntity],
+        grpc_addr: Option<Url>,
+        evm_addr: Option<Url>,
+    ) -> Result<(Vec<Coin>, String)> {
+        match self {
+            CoinType::COSMOS => {
+                let grpc_addr = grpc_addr.unwrap().to_string();
+                get_cosmos_balances(address, grpc_addr.clone())
+                    .await
+                    .map(|balances| (balances, grpc_addr.clone()))
+                    .map_err(|e| crate::error::Error::query_error(e.to_string(), grpc_addr).into())
+            }
+            CoinType::EVM => {
+                let evm_addr = evm_addr.unwrap().to_string();
+                let denom = coin_entities.first().unwrap().denom.clone();
+                get_evm_balance(address, evm_addr.clone())
+                    .await
+                    .map(|balance| {
+                        (
+                            vec![Coin {
+                                denom,
+                                amount: balance,
+                            }],
+                            evm_addr.clone(),
+                        )
+                    })
+                    .map_err(|e| crate::error::Error::query_error(e.to_string(), evm_addr).into())
+            }
+        }
+    }
 }
 
 /// Fetches on-chain balance of given address and chain
@@ -30,15 +68,57 @@ pub async fn get_cosmos_balance(
     grpc_addr: String,
 ) -> Result<String> {
     let mut query_client = create_grpc_client(grpc_addr.parse::<Uri>()?, QueryClient::new).await?;
-    let request = QueryBalanceRequest { address, denom: denom.clone() };
+    let request = QueryBalanceRequest {
+        address,
+        denom: denom.clone(),
+    };
     Ok(query_client
         .balance(request)
         .await?
         .into_inner()
         .balance
         .map(|coin| coin.amount)
-        .ok_or_else(|| crate::error::Error::get_cosmos_balance(denom))?
-    )
+        .ok_or_else(|| crate::error::Error::get_cosmos_balance(denom))?)
+}
+
+/// Fetches on-chain balance of given address and chain
+pub async fn get_cosmos_balances(address: String, grpc_addr: String) -> Result<Vec<Coin>> {
+    let mut query_client = create_grpc_client(grpc_addr.parse::<Uri>()?, QueryClient::new).await?;
+
+    let mut page_request = PageRequest {
+        key: vec![],
+        offset: 0,
+        limit: 100,
+        count_total: true,
+        reverse: true,
+    };
+    let request = QueryAllBalancesRequest {
+        address: address.clone(),
+        pagination: Some(page_request.clone()),
+        ..Default::default()
+    };
+
+    let mut coins = Vec::<Coin>::new();
+
+    let mut response = query_client.all_balances(request).await?.into_inner();
+
+    coins.extend(response.balances);
+
+    while let Some(pagination) = response.pagination {
+        if pagination.next_key.is_empty() {
+            break;
+        }
+        page_request.key = pagination.next_key;
+        let request = QueryAllBalancesRequest {
+            address: address.clone(),
+            pagination: Some(page_request.clone()),
+            ..Default::default()
+        };
+        response = query_client.all_balances(request).await?.into_inner();
+        coins.extend(response.balances);
+    }
+
+    Ok(coins)
 }
 
 pub async fn get_evm_balance(address: String, evm_addr: String) -> Result<String> {
@@ -66,6 +146,8 @@ pub async fn create_grpc_client<T>(
 
 #[cfg(test)]
 mod tests {
+    use more_asserts::assert_ge;
+
     use super::*;
 
     // TODO: use mock server instead
@@ -88,5 +170,16 @@ mod tests {
         let balance = get_evm_balance(address, evm_addr).await.unwrap();
         println!("{:?}", balance);
         assert_ne!(balance, "".to_string());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_cosmos_balances() {
+        let address = "mantra1qwm8p82w0ygaz3duf0y56gjf8pwh5ykmgnqmtm".to_string();
+        let endpoint_addr = "https://grpc.dukong.mantrachain.io".to_string();
+        let balances = get_cosmos_balances(address, endpoint_addr)
+            .await
+            .unwrap();
+        println!("{:#?}", balances);
+        assert_ge!(balances.len(), 0);
     }
 }
