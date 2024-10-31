@@ -9,13 +9,19 @@ grpc_addr = 'https://grpc.dukong.mantrachain.io'
 address = 'mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
 role = 'test1'
 refresh = '60s'
-disable_balance = true
+disable_balance = false
 balance_url = 'https://www.mintscan.io/mantra-testnet/address/mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
 [[chains.addresses.coins]]
 coin_type = "COSMOS"
 denom = 'uom'
 display_denom = 'OM'
 min_balance = '200000000000'
+decimal_place = 6
+[[chains.addresses.coins]]
+coin_type = "COSMOS"
+denom = 'uom'
+display_denom = 'OM'
+min_balance = '400000000000'
 decimal_place = 6
 [[chains.addresses.coins]]
 coin_type = "COSMOS"
@@ -31,7 +37,7 @@ min_balance = '200000000000'
 decimal_place = 18
 
 [[chains.addresses]]
-address = 'mantra1ea4hlqfskjvn0ldenw8gv7jjdzrljcchm9vhhu'
+address = 'mantra1x5nk33zpglp4ge6q9a8xx3zceqf4g8nvaggjmc'
 role = 'test2'
 refresh = '60s'
 disable_balance = false
@@ -41,6 +47,13 @@ coin_type = "COSMOS"
 denom = 'uom'
 display_denom = 'OM'
 min_balance = '1000000000000'
+decimal_place = 6
+[[chains.addresses.coins]]
+coin_type = "CW20"
+contract_address = "mantra1wrvwhcfuhqe7eru59ehkxxr2e262ksnzhtfmdtr96wctr8m2kafq2vh64r"
+denom = 'TEST'
+display_denom = 'TEST'
+min_balance = '200000000000'
 decimal_place = 6
 
 [[chains]]

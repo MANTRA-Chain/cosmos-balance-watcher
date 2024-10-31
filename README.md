@@ -1,7 +1,7 @@
 # Cosmos Balance Watcher 🧑🏻‍🏭
 
-Query native token balance for cosmos-sdk and evm chains, and expose account balance status as prometheus metrics.
-One can send alert based on prometheus alerting rules.
+Query multiple native tokens and CW20 tokens balance for cosmos-sdk and native tokens balance for evm chains, and expose account balance status as prometheus metrics.
+One can send alert based on prometheus alerting rules. Default decimal place is 6 for all tokens.
 
 ## Build
 
@@ -27,17 +27,30 @@ role = 'personal'
 refresh = '300s'
 [[chains.addresses.coins]]
 denom = 'uom'
+display_denom = 'OM'
 min_balance = '200000000000'
 [[chains.addresses.coins]]
 denom = 'ibc/D4673DC468A86C668204C7A29BFDC3511FF36D512C38C9EB9215872E9653B239'
+display_denom = 'IBC-USDY'
 min_balance = '200000000000'
+decimal_place = 18
+
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6m2'
 disable_balance = false
 role = 'relayer'
 [[chains.addresses.coins]]
 denom = 'uom'
+display_denom = 'OM'
 min_balance = '200000000000'
+[[chains.addresses.coins]]
+coin_type = "CW20"
+contract_address = "mantra1wrvwhcfuhqe7eru59ehkxxr2e262ksnzhtfmdtr96wctr8m2kafq2vh64r"
+denom = 'TEST'
+display_denom = 'TEST'
+min_balance = '200000000000'
+decimal_place = 6
+
 
 [[chains]]
 id = 'chain_B'

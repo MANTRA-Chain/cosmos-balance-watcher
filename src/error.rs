@@ -25,6 +25,15 @@ define_error! {
                 "invalid configuration: Address {} has more than one EVM coin type", e.address)
             },
 
+        ConfigDecimalExceed
+            { decimal: u32 }
+            |e| { format_args!(
+                "Decimals must not exceed 18: {}", e.decimal)
+            },
+
+        ConfigMissingCW20ContractAddress
+            |_| {"Missing CW20 contract address"},
+
         QueryError
             { source: String, endpoint: String }
             |e| { format_args!(

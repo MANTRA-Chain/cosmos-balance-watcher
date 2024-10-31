@@ -37,8 +37,9 @@ env_logger = "0.11"
 flex-error = { version = "0.4.2", default-features = false }
 toml = "0.8"
 tracing = "0.1.29"
-cosmos-sdk-proto = "0.26.0"
+cosmos-sdk-proto = {version = "0.26.0", features = ["cosmwasm"]} 
 tendermint-rpc = { version = "0.40.0", features = ["http-client"] }
+cw20 = "2.0.0"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

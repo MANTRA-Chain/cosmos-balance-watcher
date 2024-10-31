@@ -6,7 +6,12 @@ use cosmos_sdk_proto::cosmos::bank::v1beta1::{
 };
 use cosmos_sdk_proto::cosmos::base::query::v1beta1::PageRequest;
 use cosmos_sdk_proto::cosmos::base::v1beta1::Coin;
+use cosmos_sdk_proto::cosmwasm::wasm::v1::{
+    query_client::QueryClient as WasmQueryClient, QuerySmartContractStateRequest,
+};
+use cw20::{BalanceResponse, Cw20QueryMsg::Balance};
 use http::uri::Uri;
+use serde_json::{from_slice, to_vec};
 use std::str::FromStr;
 use tendermint_rpc::Url;
 use web3::types::Address;
@@ -16,12 +21,21 @@ impl CoinType {
         &self,
         address: String,
         denom: String,
+        contract_address: Option<String>,
         grpc_addr: Option<Url>,
         evm_addr: Option<Url>,
     ) -> Result<String> {
         match self {
             CoinType::COSMOS => {
                 get_cosmos_balance(address, denom, grpc_addr.unwrap().to_string()).await
+            }
+            CoinType::CW20 => {
+                get_cw20_balance(
+                    address,
+                    contract_address.unwrap().to_string(),
+                    grpc_addr.unwrap().to_string(),
+                )
+                .await
             }
             CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
         }
@@ -40,6 +54,24 @@ impl CoinType {
                     .await
                     .map(|balances| (balances, grpc_addr.clone()))
                     .map_err(|e| crate::error::Error::query_error(e.to_string(), grpc_addr).into())
+            }
+            CoinType::CW20 => {
+                let grpc_addr = grpc_addr.unwrap().to_string();
+                let mut coins = Vec::<Coin>::new();
+                for coin_entity in coin_entities {
+                    let contract_address = coin_entity.contract_address.clone().unwrap();
+                    let balance =
+                        get_cw20_balance(address.clone(), contract_address, grpc_addr.clone())
+                            .await
+                            .map_err(|e| {
+                                crate::error::Error::query_error(e.to_string(), grpc_addr.clone())
+                            })?;
+                    coins.push(Coin {
+                        denom: coin_entity.denom.clone(),
+                        amount: balance,
+                    });
+                }
+                Ok((coins, grpc_addr))
             }
             CoinType::EVM => {
                 let evm_addr = evm_addr.unwrap().to_string();
@@ -129,6 +161,27 @@ pub async fn get_evm_balance(address: String, evm_addr: String) -> Result<String
     Ok(balance.as_u128().to_string())
 }
 
+pub async fn get_cw20_balance(
+    address: String,
+    contract_address: String,
+    grpc_addr: String,
+) -> Result<String> {
+    let mut query_client =
+        create_grpc_client(grpc_addr.parse::<Uri>()?, WasmQueryClient::new).await?;
+    let request = QuerySmartContractStateRequest {
+        address: contract_address,
+        query_data: to_vec(&Balance { address })?,
+    };
+    let resp: BalanceResponse = from_slice(
+        &query_client
+            .smart_contract_state(request)
+            .await?
+            .into_inner()
+            .data,
+    )?;
+    Ok(resp.balance.to_string())
+}
+
 /// Helper function to create a gRPC client.
 pub async fn create_grpc_client<T>(
     grpc_addr: Uri,
@@ -176,10 +229,21 @@ mod tests {
     async fn test_get_cosmos_balances() {
         let address = "mantra1qwm8p82w0ygaz3duf0y56gjf8pwh5ykmgnqmtm".to_string();
         let endpoint_addr = "https://grpc.dukong.mantrachain.io".to_string();
-        let balances = get_cosmos_balances(address, endpoint_addr)
-            .await
-            .unwrap();
+        let balances = get_cosmos_balances(address, endpoint_addr).await.unwrap();
         println!("{:#?}", balances);
         assert_ge!(balances.len(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_get_cw20_balance() {
+        let address = "mantra1x5nk33zpglp4ge6q9a8xx3zceqf4g8nvaggjmc".to_string();
+        let contract_address =
+            "mantra1wrvwhcfuhqe7eru59ehkxxr2e262ksnzhtfmdtr96wctr8m2kafq2vh64r".to_string();
+        let endpoint_addr = "https://grpc.dukong.mantrachain.io".to_string();
+        let balance = get_cw20_balance(address, contract_address, endpoint_addr)
+            .await
+            .unwrap();
+        println!("{:?}", balance);
+        assert_ne!(balance, "".to_string());
     }
 }

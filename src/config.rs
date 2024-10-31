@@ -16,6 +16,10 @@ pub mod default {
     pub fn coin_type() -> CoinType {
         CoinType::COSMOS
     }
+
+    pub fn decimal_place() -> u32 {
+        6
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -83,7 +87,9 @@ pub struct Coin {
     pub min_balance: String,
     pub denom: String,
     pub display_denom: Option<String>,
-    pub decimal_place: Option<u32>,
+    pub contract_address: Option<String>,
+    #[serde(default = "default::decimal_place")]
+    pub decimal_place: u32, // default 6
     #[serde(default = "default::coin_type")]
     pub coin_type: CoinType,
 }
@@ -91,6 +97,7 @@ pub struct Coin {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum CoinType {
     COSMOS,
+    CW20,
     EVM,
 }
 
@@ -101,6 +108,7 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config, Error> {
     let config = toml::from_str::<Config>(&config_toml[..]).map_err(Error::config_decode)?;
     check_parse_u128(config.clone())?;
     check_single_evm_coin_type_in_address(config.clone())?;
+    check_decimal_place(config.clone())?;
     Ok(config)
 }
 
@@ -122,18 +130,48 @@ pub fn check_parse_u128(config: Config) -> Result<(), Error> {
 pub fn check_single_evm_coin_type_in_address(config: Config) -> Result<(), Error> {
     for chain_config in config.chains.iter() {
         for chain_address in chain_config.addresses.iter() {
-            let mut evm_count = 0;
-            for coin in chain_address.coins.iter() {
-                if coin.coin_type == CoinType::EVM {
-                    evm_count += 1;
-                }
-            }
+            let evm_count = chain_address
+                .coins
+                .iter()
+                .filter(|coin| coin.coin_type == CoinType::EVM)
+                .count();
+
             if evm_count > 1 {
                 return Err(Error::config_single_evm_coin_type_in_address(
                     chain_address.address.clone(),
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+// Check decimal place
+pub fn check_decimal_place(config: Config) -> Result<(), Error> {
+    if config.chains.iter().any(|chain_config| {
+        chain_config.addresses.iter().any(|chain_address| {
+            chain_address
+                .coins
+                .iter()
+                .any(|coin| coin.decimal_place > 18)
+        })
+    }) {
+        return Err(Error::config_decimal_exceed(18));
+    }
+    Ok(())
+}
+
+// check contract address if it is CoinType::CW20
+pub fn check_cw20_contract_address(config: Config) -> Result<(), Error> {
+    if config.chains.iter().any(|chain_config| {
+        chain_config.addresses.iter().any(|chain_address| {
+            chain_address
+                .coins
+                .iter()
+                .any(|coin| coin.coin_type == CoinType::CW20 && coin.contract_address.is_none())
+        })
+    }) {
+        return Err(Error::config_missing_c_w20_contract_address());
     }
     Ok(())
 }

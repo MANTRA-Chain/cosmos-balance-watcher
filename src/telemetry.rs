@@ -6,7 +6,7 @@ use warp::{Rejection, Reply};
 lazy_static! {
     pub static ref ACCOUNT_BALANCE_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
         Opts::new("account_balance", "account balance"),
-        &["chain_id", "address", "denom", "min_balance", "role", "balance_url"]
+        &["chain_id", "address", "denom", "role", "balance_url"]
     )
     .expect("metric can be created");
     pub static ref ACCOUNT_STATUS_COLLECTOR: IntGaugeVec = IntGaugeVec::new(
@@ -28,13 +28,12 @@ pub fn account_balance_setter(
     chain_id: &str,
     address: &str,
     denom: &str,
-    min_balance: &str,
     role: &str,
     balance_url: &str,
     balance: i64,
 ) {
     ACCOUNT_BALANCE_COLLECTOR
-        .with_label_values(&[chain_id, address, denom, min_balance, role, balance_url])
+        .with_label_values(&[chain_id, address, denom, role, balance_url])
         .set(balance);
 }
 

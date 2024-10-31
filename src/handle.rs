@@ -36,12 +36,13 @@ pub async fn account_status_collector(config: config::Config) {
 
 #[derive(Eq, Hash, PartialEq)]
 pub struct CoinEntity {
+    pub coin_type: config::CoinType,
+    pub contract_address: Option<String>,
+    pub decimal_place: u32,
     pub denom: String,
     pub display_denom: String,
     pub display_min_balance: String,
     pub min_balance: String,
-    pub coin_type: config::CoinType,
-    pub decimal_place: Option<u32>,
 }
 
 pub async fn track_account_status(
@@ -50,29 +51,29 @@ pub async fn track_account_status(
     chain_id: String,
     chain_address: config::Address,
 ) {
-    let address = &chain_address.address;
-    let hex_address = &chain_address.hex_address;
+    let address = chain_address
+        .hex_address
+        .unwrap_or(chain_address.address.clone());
     let refresh = &chain_address.refresh;
     let balance_url = &chain_address.balance_url;
     let role = &chain_address.role;
     let mut collect_interval = tokio::time::interval(refresh.to_owned());
     let mut coin_map: HashMap<config::CoinType, Vec<CoinEntity>> = HashMap::new();
     for coin in chain_address.coins.iter() {
-        let display_min_balance = if let Some(dp) = coin.decimal_place {
-            from_atomics(&coin.min_balance, dp)
-        } else {
-            coin.min_balance.clone()
-        };
-        let coin_type = coin.coin_type.clone();
+        let display_min_balance = from_atomics(&coin.min_balance, coin.decimal_place);
         let coin_entity = CoinEntity {
+            coin_type: coin.coin_type.clone(),
+            contract_address: coin.contract_address.clone(),
+            decimal_place: coin.decimal_place,
             denom: coin.denom.clone(),
             display_denom: coin.display_denom.clone().unwrap_or(coin.denom.clone()),
             display_min_balance,
             min_balance: coin.min_balance.clone(),
-            coin_type: coin_type.clone(),
-            decimal_place: coin.decimal_place,
         };
-        coin_map.entry(coin_type).or_default().push(coin_entity);
+        coin_map
+            .entry(coin.coin_type.clone())
+            .or_default()
+            .push(coin_entity);
     }
 
     loop {
@@ -80,7 +81,7 @@ pub async fn track_account_status(
         for (coin_type, coin_entities) in coin_map.iter() {
             let tmp_balances = match coin_type
                 .get_balances(
-                    address.into(),
+                    address.clone(),
                     coin_entities,
                     grpc_addr.clone(),
                     evm_addr.clone(),
@@ -90,7 +91,7 @@ pub async fn track_account_status(
                 Ok((balances, query_endpoint_url)) => {
                     account_query_status_setter(
                         &chain_id,
-                        hex_address.as_ref().unwrap_or(address),
+                        &address,
                         role,
                         balance_url.as_ref().unwrap_or(&"".to_string()),
                         &query_endpoint_url,
@@ -105,10 +106,12 @@ pub async fn track_account_status(
                         .split(" (endpoint: ")
                         .last()
                         .unwrap_or("")
-                        .trim_end_matches(')');
+                        .split(')')
+                        .next()
+                        .unwrap_or("");
                     account_query_status_setter(
                         &chain_id,
-                        hex_address.as_ref().unwrap_or(address),
+                        &address,
                         role,
                         balance_url.as_ref().unwrap_or(&"".to_string()),
                         query_endpoint_url,
@@ -134,7 +137,7 @@ pub async fn track_account_status(
 
                     account_status_setter(
                         &chain_id,
-                        hex_address.as_ref().unwrap_or(address),
+                        &address,
                         &coin_entity.display_denom,
                         &coin_entity.display_min_balance,
                         role,
@@ -144,7 +147,7 @@ pub async fn track_account_status(
                 } else {
                     account_status_setter(
                         &chain_id,
-                        hex_address.as_ref().unwrap_or(address),
+                        &address,
                         &coin_entity.display_denom,
                         &coin_entity.display_min_balance,
                         role,
@@ -154,18 +157,15 @@ pub async fn track_account_status(
                 }
 
                 if chain_address.disable_balance != Some(true) {
-                    if let Some(dp) = coin_entity.decimal_place {
-                        let display_balance = from_atomics(&coin.amount, dp);
-                        account_balance_setter(
-                            &chain_id,
-                            hex_address.as_ref().unwrap_or(address),
-                            &coin_entity.display_denom,
-                            &coin_entity.display_min_balance,
-                            role,
-                            balance_url.as_ref().unwrap_or(&"".to_string()),
-                            display_balance.parse::<i64>().unwrap(),
-                        );
-                    }
+                    let display_balance = from_atomics(&coin.amount, coin_entity.decimal_place);
+                    account_balance_setter(
+                        &chain_id,
+                        &address,
+                        &coin_entity.display_denom,
+                        role,
+                        balance_url.as_ref().unwrap_or(&"".to_string()),
+                        display_balance.parse::<i64>().unwrap(),
+                    );
                 }
                 info!(
                     "The latest balance={}{} with address ({}) for {} on ({})",
