@@ -19,12 +19,6 @@ define_error! {
             [ TraceError<std::num::ParseIntError> ]
             |_| { "invalid number" },
 
-        ConfigSingleEvmCoinTypeInAddress
-            { address: String }
-            |e| { format_args!(
-                "invalid configuration: Address {} has more than one EVM coin type", e.address)
-            },
-
         ConfigDecimalExceed
             { decimal: u32 }
             |e| { format_args!(

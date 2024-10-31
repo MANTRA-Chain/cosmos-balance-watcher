@@ -44,3 +44,23 @@ refresh = '300s'
 [[chains.addresses.coins]]
 denom = 'uom'
 min_balance = '1000000000000000000000000000000000'
+
+[[chains]]
+id = 'chain_C'
+evm_addr = 'http://127.0.0.1:8080'
+[[chains.addresses]]
+address = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
+role = 'someone'
+refresh = '300s'
+[[chains.addresses.coins]]
+coin_type = "EVM"
+denom = 'wei'
+display_denom = 'ETH'
+min_balance = '10000000000000000000'
+decimal_place = 18
+[[chains.addresses.coins]]
+coin_type = "EVM"
+denom = 'wei'
+display_denom = 'ETH'
+min_balance = '20000000000000000000'
+decimal_place = 18

@@ -107,7 +107,6 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config, Error> {
 
     let config = toml::from_str::<Config>(&config_toml[..]).map_err(Error::config_decode)?;
     check_parse_u128(config.clone())?;
-    check_single_evm_coin_type_in_address(config.clone())?;
     check_decimal_place(config.clone())?;
     Ok(config)
 }
@@ -120,26 +119,6 @@ pub fn check_parse_u128(config: Config) -> Result<(), Error> {
                 coin.min_balance
                     .parse::<u128>()
                     .map_err(Error::config_parse_u128)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-// Check if there is more than one EVM coin type in the address
-pub fn check_single_evm_coin_type_in_address(config: Config) -> Result<(), Error> {
-    for chain_config in config.chains.iter() {
-        for chain_address in chain_config.addresses.iter() {
-            let evm_count = chain_address
-                .coins
-                .iter()
-                .filter(|coin| coin.coin_type == CoinType::EVM)
-                .count();
-
-            if evm_count > 1 {
-                return Err(Error::config_single_evm_coin_type_in_address(
-                    chain_address.address.clone(),
-                ));
             }
         }
     }
