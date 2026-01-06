@@ -28,7 +28,7 @@ jobs:
     permissions:
       packages: write
       contents: read
-    runs-on: ubuntu-latest-x64-xlarge
+    runs-on: ubuntu-latest
     steps:
     - uses: mantra-chain-tech/infra-github-actions-mantrachain/docker-buildx-v1@main
       with:
