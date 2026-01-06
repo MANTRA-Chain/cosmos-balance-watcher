@@ -13,7 +13,7 @@ env:
 
 jobs:
   rust-test:
-    runs-on: ubuntu-latest-x64-xlarge
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
@@ -40,7 +40,7 @@ jobs:
         run: cargo test --all --verbose
   fmt:
     name: Rustfmt
-    runs-on: ubuntu-latest-x64-xlarge
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
         run: cargo fmt
   clippy:
     name: Clippy
-    runs-on: ubuntu-latest-x64-xlarge
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
