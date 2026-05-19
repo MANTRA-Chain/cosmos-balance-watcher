@@ -14,6 +14,7 @@ use http::uri::Uri;
 use serde_json::{from_slice, to_vec};
 use std::str::FromStr;
 use tendermint_rpc::Url;
+use web3::contract::{Contract, Options};
 use web3::types::Address;
 
 impl CoinType {
@@ -38,6 +39,14 @@ impl CoinType {
                 .await
             }
             CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
+            CoinType::EVM_ERC20 => {
+                get_evm_erc20_balance(
+                    address,
+                    contract_address.unwrap().to_string(),
+                    evm_addr.unwrap().to_string(),
+                )
+                .await
+            }
         }
     }
     pub async fn get_balances(
@@ -88,6 +97,27 @@ impl CoinType {
                         )
                     })
                     .map_err(|e| crate::error::Error::query_error(e.to_string(), evm_addr).into())
+            }
+            CoinType::EVM_ERC20 => {
+                let evm_addr = evm_addr.unwrap().to_string();
+                let mut coins = Vec::<Coin>::new();
+                for coin_entity in coin_entities {
+                    let contract_address = coin_entity.contract_address.clone().unwrap();
+                    let balance = get_evm_erc20_balance(
+                        address.clone(),
+                        contract_address,
+                        evm_addr.clone(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        crate::error::Error::query_error(e.to_string(), evm_addr.clone())
+                    })?;
+                    coins.push(Coin {
+                        denom: coin_entity.denom.clone(),
+                        amount: balance,
+                    });
+                }
+                Ok((coins, evm_addr))
             }
         }
     }
@@ -158,6 +188,37 @@ pub async fn get_evm_balance(address: String, evm_addr: String) -> Result<String
     let web3 = web3::Web3::new(transport);
     let account = Address::from_str(&address)?;
     let balance = web3.eth().balance(account, None).await?;
+    Ok(balance.as_u128().to_string())
+}
+
+/// Fetches ERC-20 token balance via `balanceOf(address)` eth_call.
+/// Works for any EVM ERC-20 token (MantraUSD, USDC, USDT, etc.).
+pub async fn get_evm_erc20_balance(
+    address: String,
+    contract_address: String,
+    evm_addr: String,
+) -> Result<String> {
+    // Minimal ERC-20 ABI — only balanceOf is needed
+    let abi = r#"[{
+        "constant": true,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function"
+    }]"#;
+
+    let transport = web3::transports::Http::new(&evm_addr)?;
+    let web3 = web3::Web3::new(transport);
+
+    let contract_addr = Address::from_str(&contract_address)?;
+    let wallet_addr = Address::from_str(&address)?;
+
+    let contract = Contract::from_json(web3.eth(), contract_addr, abi.as_bytes())?;
+
+    let balance: web3::types::U256 = contract
+        .query("balanceOf", (wallet_addr,), None, Options::default(), None)
+        .await?;
+
     Ok(balance.as_u128().to_string())
 }
 
