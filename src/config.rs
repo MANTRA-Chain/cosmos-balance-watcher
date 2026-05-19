@@ -94,6 +94,7 @@ pub struct Coin {
     pub coin_type: CoinType,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum CoinType {
     COSMOS,
@@ -143,7 +144,7 @@ pub fn check_decimal_place(config: Config) -> Result<(), Error> {
     Ok(())
 }
 
-// check contract address if it is CoinType::CW20 or CoinType::EVM_ERC20
+// check contract address if it is CoinType::CW20 or CoinType::EvmErc20
 pub fn check_cw20_contract_address(config: Config) -> Result<(), Error> {
     if config.chains.iter().any(|chain_config| {
         chain_config.addresses.iter().any(|chain_address| {
