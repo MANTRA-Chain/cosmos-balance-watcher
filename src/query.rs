@@ -14,6 +14,7 @@ use http::uri::Uri;
 use serde_json::{from_slice, to_vec};
 use std::str::FromStr;
 use tendermint_rpc::Url;
+use web3::contract::{Contract, Options};
 use web3::types::Address;
 
 impl CoinType {
@@ -38,6 +39,14 @@ impl CoinType {
                 .await
             }
             CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
+            CoinType::EVM_ERC20 => {
+                get_evm_erc20_balance(
+                    address,
+                    contract_address.unwrap().to_string(),
+                    evm_addr.unwrap().to_string(),
+                )
+                .await
+            }
         }
     }
     pub async fn get_balances(
@@ -88,6 +97,27 @@ impl CoinType {
                         )
                     })
                     .map_err(|e| crate::error::Error::query_error(e.to_string(), evm_addr).into())
+            }
+            CoinType::EVM_ERC20 => {
+                let evm_addr = evm_addr.unwrap().to_string();
+                let mut coins = Vec::<Coin>::new();
+                for coin_entity in coin_entities {
+                    let contract_address = coin_entity.contract_address.clone().unwrap();
+                    let balance = get_evm_erc20_balance(
+                        address.clone(),
+                        contract_address,
+                        evm_addr.clone(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        crate::error::Error::query_error(e.to_string(), evm_addr.clone())
+                    })?;
+                    coins.push(Coin {
+                        denom: coin_entity.denom.clone(),
+                        amount: balance,
+                    });
+                }
+                Ok((coins, evm_addr))
             }
         }
     }
@@ -161,6 +191,37 @@ pub async fn get_evm_balance(address: String, evm_addr: String) -> Result<String
     Ok(balance.as_u128().to_string())
 }
 
+/// Fetches ERC-20 token balance via `balanceOf(address)` eth_call.
+/// Works for any EVM ERC-20 token (MantraUSD, USDC, USDT, etc.).
+pub async fn get_evm_erc20_balance(
+    address: String,
+    contract_address: String,
+    evm_addr: String,
+) -> Result<String> {
+    // Minimal ERC-20 ABI — only balanceOf is needed
+    let abi = r#"[{
+        "constant": true,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function"
+    }]"#;
+
+    let transport = web3::transports::Http::new(&evm_addr)?;
+    let web3 = web3::Web3::new(transport);
+
+    let contract_addr = Address::from_str(&contract_address)?;
+    let wallet_addr = Address::from_str(&address)?;
+
+    let contract = Contract::from_json(web3.eth(), contract_addr, abi.as_bytes())?;
+
+    let balance: web3::types::U256 = contract
+        .query("balanceOf", (wallet_addr,), None, Options::default(), None)
+        .await?;
+
+    Ok(balance.as_u128().to_string())
+}
+
 pub async fn get_cw20_balance(
     address: String,
     contract_address: String,
@@ -219,7 +280,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_get_evm_balance() {
         let address = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B".to_string(); // vitalik
-        let evm_addr = "https://eth.llamarpc.com".to_string();
+        let evm_addr = "https://ethereum-rpc.publicnode.com".to_string();
         let balance = get_evm_balance(address, evm_addr).await.unwrap();
         println!("{:?}", balance);
         assert_ne!(balance, "".to_string());
@@ -245,5 +306,23 @@ mod tests {
             .unwrap();
         println!("{:?}", balance);
         assert_ne!(balance, "".to_string());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_evm_erc20_balance() {
+        // MantraUSD (6 decimals) on MANTRA Mainnet — stablebridge treasury wallet
+        let address = "0x83526104bd67b8b230685dcc38129b7c0fc8c340".to_string();
+        let contract_address = "0xd2b95283011E47257917770D28Bb3EE44c849f6F".to_string();
+        let evm_addr = "https://evm.mantrachain.io".to_string();
+        let balance = get_evm_erc20_balance(address, contract_address, evm_addr)
+            .await
+            .unwrap();
+        println!("MantraUSD raw balance: {}", balance);
+        let balance_u128: u128 = balance.parse().unwrap();
+        // Treasury must hold at least 100 MantraUSD (100 * 10^6) to keep bridge running
+        assert!(
+            balance_u128 > 0,
+            "treasury MantraUSD balance should be non-zero"
+        );
     }
 }

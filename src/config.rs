@@ -94,11 +94,15 @@ pub struct Coin {
     pub coin_type: CoinType,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum CoinType {
     COSMOS,
     CW20,
     EVM,
+    /// EVM ERC-20 token balance via eth_call → balanceOf(address).
+    /// Requires `contract_address` to be set on the coin.
+    EVM_ERC20,
 }
 
 /// Attempt to load and parse the TOML config file as a `Config`.
@@ -140,14 +144,14 @@ pub fn check_decimal_place(config: Config) -> Result<(), Error> {
     Ok(())
 }
 
-// check contract address if it is CoinType::CW20
+// check contract address if it is CoinType::CW20 or CoinType::EvmErc20
 pub fn check_cw20_contract_address(config: Config) -> Result<(), Error> {
     if config.chains.iter().any(|chain_config| {
         chain_config.addresses.iter().any(|chain_address| {
-            chain_address
-                .coins
-                .iter()
-                .any(|coin| coin.coin_type == CoinType::CW20 && coin.contract_address.is_none())
+            chain_address.coins.iter().any(|coin| {
+                (coin.coin_type == CoinType::CW20 || coin.coin_type == CoinType::EVM_ERC20)
+                    && coin.contract_address.is_none()
+            })
         })
     }) {
         return Err(Error::config_missing_c_w20_contract_address());
