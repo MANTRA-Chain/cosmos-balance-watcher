@@ -280,7 +280,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_get_evm_balance() {
         let address = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B".to_string(); // vitalik
-        let evm_addr = "https://eth.llamarpc.com".to_string();
+        let evm_addr = "https://ethereum-rpc.publicnode.com".to_string();
         let balance = get_evm_balance(address, evm_addr).await.unwrap();
         println!("{:?}", balance);
         assert_ne!(balance, "".to_string());
@@ -306,5 +306,23 @@ mod tests {
             .unwrap();
         println!("{:?}", balance);
         assert_ne!(balance, "".to_string());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_evm_erc20_balance() {
+        // MantraUSD (6 decimals) on MANTRA Mainnet — stablebridge treasury wallet
+        let address = "0x83526104bd67b8b230685dcc38129b7c0fc8c340".to_string();
+        let contract_address = "0xd2b95283011E47257917770D28Bb3EE44c849f6F".to_string();
+        let evm_addr = "https://evm.mantrachain.io".to_string();
+        let balance = get_evm_erc20_balance(address, contract_address, evm_addr)
+            .await
+            .unwrap();
+        println!("MantraUSD raw balance: {}", balance);
+        let balance_u128: u128 = balance.parse().unwrap();
+        // Treasury must hold at least 100 MantraUSD (100 * 10^6) to keep bridge running
+        assert!(
+            balance_u128 > 0,
+            "treasury MantraUSD balance should be non-zero"
+        );
     }
 }
