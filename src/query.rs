@@ -1,6 +1,6 @@
 use crate::config::CoinType;
 use crate::handle::CoinEntity;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use cosmos_sdk_proto::cosmos::bank::v1beta1::{
     query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest,
 };
@@ -11,11 +11,45 @@ use cosmos_sdk_proto::cosmwasm::wasm::v1::{
 };
 use cw20::{BalanceResponse, Cw20QueryMsg::Balance};
 use http::uri::Uri;
+use log::warn;
 use serde_json::{from_slice, to_vec};
+use std::future::Future;
 use std::str::FromStr;
 use tendermint_rpc::Url;
 use web3::contract::{Contract, Options};
 use web3::types::Address;
+
+/// Tries each endpoint in order, falling back to the next one on any error.
+/// Returns the successful value along with the endpoint that produced it.
+async fn try_endpoints<T, F, Fut>(endpoints: &[Url], mut op: F) -> Result<(T, String)>
+where
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let mut last_err = None;
+    for endpoint in endpoints {
+        let endpoint_str = endpoint.to_string();
+        match op(endpoint_str.clone()).await {
+            Ok(value) => return Ok((value, endpoint_str)),
+            Err(e) => {
+                warn!(
+                    "query failed on endpoint {}: {}, trying next endpoint",
+                    endpoint_str, e
+                );
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("no endpoint configured")))
+}
+
+fn join_endpoints(endpoints: &[Url]) -> String {
+    endpoints
+        .iter()
+        .map(|u| u.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
 
 impl CoinType {
     pub async fn get_balance(
@@ -23,29 +57,35 @@ impl CoinType {
         address: String,
         denom: String,
         contract_address: Option<String>,
-        grpc_addr: Option<Url>,
-        evm_addr: Option<Url>,
+        grpc_addr: Vec<Url>,
+        evm_addr: Vec<Url>,
     ) -> Result<String> {
         match self {
-            CoinType::COSMOS => {
-                get_cosmos_balance(address, denom, grpc_addr.unwrap().to_string()).await
-            }
+            CoinType::COSMOS => try_endpoints(&grpc_addr, |endpoint| {
+                get_cosmos_balance(address.clone(), denom.clone(), endpoint)
+            })
+            .await
+            .map(|(balance, _)| balance),
             CoinType::CW20 => {
-                get_cw20_balance(
-                    address,
-                    contract_address.unwrap().to_string(),
-                    grpc_addr.unwrap().to_string(),
-                )
+                let contract_address = contract_address.unwrap();
+                try_endpoints(&grpc_addr, |endpoint| {
+                    get_cw20_balance(address.clone(), contract_address.clone(), endpoint)
+                })
                 .await
+                .map(|(balance, _)| balance)
             }
-            CoinType::EVM => get_evm_balance(address, evm_addr.unwrap().to_string()).await,
+            CoinType::EVM => try_endpoints(&evm_addr, |endpoint| {
+                get_evm_balance(address.clone(), endpoint)
+            })
+            .await
+            .map(|(balance, _)| balance),
             CoinType::EVM_ERC20 => {
-                get_evm_erc20_balance(
-                    address,
-                    contract_address.unwrap().to_string(),
-                    evm_addr.unwrap().to_string(),
-                )
+                let contract_address = contract_address.unwrap();
+                try_endpoints(&evm_addr, |endpoint| {
+                    get_evm_erc20_balance(address.clone(), contract_address.clone(), endpoint)
+                })
                 .await
+                .map(|(balance, _)| balance)
             }
         }
     }
@@ -53,72 +93,82 @@ impl CoinType {
         &self,
         address: String,
         coin_entities: &[CoinEntity],
-        grpc_addr: Option<Url>,
-        evm_addr: Option<Url>,
+        grpc_addr: Vec<Url>,
+        evm_addr: Vec<Url>,
     ) -> Result<(Vec<Coin>, String)> {
         match self {
-            CoinType::COSMOS => {
-                let grpc_addr = grpc_addr.unwrap().to_string();
-                get_cosmos_balances(address, grpc_addr.clone())
-                    .await
-                    .map(|balances| (balances, grpc_addr.clone()))
-                    .map_err(|e| crate::error::Error::query_error(e.to_string(), grpc_addr).into())
-            }
-            CoinType::CW20 => {
-                let grpc_addr = grpc_addr.unwrap().to_string();
-                let mut coins = Vec::<Coin>::new();
-                for coin_entity in coin_entities {
-                    let contract_address = coin_entity.contract_address.clone().unwrap();
-                    let balance =
-                        get_cw20_balance(address.clone(), contract_address, grpc_addr.clone())
-                            .await
-                            .map_err(|e| {
-                                crate::error::Error::query_error(e.to_string(), grpc_addr.clone())
-                            })?;
-                    coins.push(Coin {
-                        denom: coin_entity.denom.clone(),
-                        amount: balance,
-                    });
+            CoinType::COSMOS => try_endpoints(&grpc_addr, |endpoint| {
+                get_cosmos_balances(address.clone(), endpoint)
+            })
+            .await
+            .map_err(|e| {
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addr)).into()
+            }),
+            CoinType::CW20 => try_endpoints(&grpc_addr, |endpoint| {
+                let address = address.clone();
+                async move {
+                    let mut coins = Vec::<Coin>::new();
+                    for coin_entity in coin_entities {
+                        let contract_address = coin_entity.contract_address.clone().unwrap();
+                        let balance =
+                            get_cw20_balance(address.clone(), contract_address, endpoint.clone())
+                                .await?;
+                        coins.push(Coin {
+                            denom: coin_entity.denom.clone(),
+                            amount: balance,
+                        });
+                    }
+                    Ok(coins)
                 }
-                Ok((coins, grpc_addr))
-            }
+            })
+            .await
+            .map_err(|e| {
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addr)).into()
+            }),
             CoinType::EVM => {
-                let evm_addr = evm_addr.unwrap().to_string();
                 let denom = coin_entities.first().unwrap().denom.clone();
-                get_evm_balance(address, evm_addr.clone())
-                    .await
-                    .map(|balance| {
-                        (
-                            vec![Coin {
-                                denom,
-                                amount: balance,
-                            }],
-                            evm_addr.clone(),
-                        )
-                    })
-                    .map_err(|e| crate::error::Error::query_error(e.to_string(), evm_addr).into())
-            }
-            CoinType::EVM_ERC20 => {
-                let evm_addr = evm_addr.unwrap().to_string();
-                let mut coins = Vec::<Coin>::new();
-                for coin_entity in coin_entities {
-                    let contract_address = coin_entity.contract_address.clone().unwrap();
-                    let balance = get_evm_erc20_balance(
-                        address.clone(),
-                        contract_address,
-                        evm_addr.clone(),
+                try_endpoints(&evm_addr, |endpoint| {
+                    get_evm_balance(address.clone(), endpoint)
+                })
+                .await
+                .map(|(balance, used_endpoint)| {
+                    (
+                        vec![Coin {
+                            denom,
+                            amount: balance,
+                        }],
+                        used_endpoint,
                     )
-                    .await
-                    .map_err(|e| {
-                        crate::error::Error::query_error(e.to_string(), evm_addr.clone())
-                    })?;
-                    coins.push(Coin {
-                        denom: coin_entity.denom.clone(),
-                        amount: balance,
-                    });
-                }
-                Ok((coins, evm_addr))
+                })
+                .map_err(|e| {
+                    crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addr))
+                        .into()
+                })
             }
+            CoinType::EVM_ERC20 => try_endpoints(&evm_addr, |endpoint| {
+                let address = address.clone();
+                async move {
+                    let mut coins = Vec::<Coin>::new();
+                    for coin_entity in coin_entities {
+                        let contract_address = coin_entity.contract_address.clone().unwrap();
+                        let balance = get_evm_erc20_balance(
+                            address.clone(),
+                            contract_address,
+                            endpoint.clone(),
+                        )
+                        .await?;
+                        coins.push(Coin {
+                            denom: coin_entity.denom.clone(),
+                            amount: balance,
+                        });
+                    }
+                    Ok(coins)
+                }
+            })
+            .await
+            .map_err(|e| {
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addr)).into()
+            }),
         }
     }
 }
@@ -261,8 +311,57 @@ pub async fn create_grpc_client<T>(
 #[cfg(test)]
 mod tests {
     use more_asserts::assert_ge;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    #[actix_rt::test]
+    async fn test_try_endpoints_falls_back_on_error() {
+        let endpoints: Vec<Url> = vec![
+            "http://127.0.0.1:1".parse().unwrap(),
+            "http://127.0.0.1:2".parse().unwrap(),
+        ];
+        let attempts = AtomicUsize::new(0);
+
+        let (value, used) = try_endpoints(&endpoints, |endpoint| {
+            let attempts = &attempts;
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                if endpoint.contains(":1") {
+                    Err(anyhow!("endpoint {} down", endpoint))
+                } else {
+                    Ok(endpoint)
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(value, "http://127.0.0.1:2/");
+        assert_eq!(used, "http://127.0.0.1:2/");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[actix_rt::test]
+    async fn test_try_endpoints_returns_err_when_all_fail() {
+        let endpoints: Vec<Url> = vec![
+            "http://127.0.0.1:1".parse().unwrap(),
+            "http://127.0.0.1:2".parse().unwrap(),
+        ];
+        let attempts = AtomicUsize::new(0);
+
+        let result: Result<((), String)> = try_endpoints(&endpoints, |_endpoint| {
+            let attempts = &attempts;
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                Err(anyhow!("always down"))
+            }
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
 
     // TODO: use mock server instead
     #[actix_rt::test]

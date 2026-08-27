@@ -3,6 +3,16 @@
 Query multiple native tokens and CW20 tokens balance for cosmos-sdk and native tokens balance for evm chains, and expose account balance status as prometheus metrics.
 One can send alert based on prometheus alerting rules. Default decimal place is 6 for all tokens.
 
+`grpc_addr` (cosmos-sdk chains) and `evm_addr` (evm chains) accept either a single endpoint or a list of endpoints:
+
+```toml
+grpc_addr = 'https://grpc.dukong.mantrachain.io'
+# or, with fallback:
+grpc_addr = ['https://grpc.dukong.mantrachain.io', 'https://grpc.dukong-fallback.mantrachain.io']
+```
+
+When a list is given, endpoints are tried in order on every refresh; if a query fails against one endpoint, the next one is tried, falling through the whole list.
+
 ## Build
 
 ```bash

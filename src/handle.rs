@@ -46,8 +46,8 @@ pub struct CoinEntity {
 }
 
 pub async fn track_account_status(
-    grpc_addr: Option<Url>,
-    evm_addr: Option<Url>,
+    grpc_addr: Vec<Url>,
+    evm_addr: Vec<Url>,
     chain_id: String,
     chain_address: config::Address,
 ) {

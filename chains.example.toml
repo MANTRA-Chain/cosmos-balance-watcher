@@ -2,9 +2,15 @@
 host = '127.0.0.1'
 port = 9090
 
+# grpc_addr / evm_addr accept either a single endpoint (a string) or a list of
+# endpoints (an array). When a list is given, endpoints are tried in order on
+# every refresh, falling through to the next one on any error.
 [[chains]]
 id = 'mantra-dukong-1'
-grpc_addr = 'https://grpc.dukong.mantrachain.io'
+grpc_addr = [
+  'https://grpc.dukong.mantrachain.io',
+  'https://grpc.dukong-fallback.mantrachain.io',
+]
 [[chains.addresses]]
 address = 'mantra1q8mgs55hfgkm7d5rret439997x87s2ekwcxlv0'
 role = 'test1'

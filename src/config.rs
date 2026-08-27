@@ -1,4 +1,5 @@
 //! Chain configuration
+use serde::{Deserialize as _, Deserializer};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{fs, fs::File, io::Write, path::Path, time::Duration};
@@ -20,6 +21,25 @@ pub mod default {
     pub fn decimal_place() -> u32 {
         6
     }
+}
+
+/// Accepts either a single endpoint (`grpc_addr = 'https://...'`) or a list of
+/// endpoints (`grpc_addr = ['https://a', 'https://b']`) for backward compatibility.
+/// Endpoints are tried in the given order, falling back to the next one on error.
+fn deserialize_one_or_many_url<'de, D>(deserializer: D) -> Result<Vec<Url>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(Url),
+        Many(Vec<Url>),
+    }
+    Ok(match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(url) => vec![url],
+        OneOrMany::Many(urls) => urls,
+    })
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -61,8 +81,18 @@ impl Default for PrometheusConfig {
 #[serde(deny_unknown_fields)]
 pub struct ChainConfig {
     pub id: String,
-    pub grpc_addr: Option<Url>,
-    pub evm_addr: Option<Url>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_one_or_many_url",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub grpc_addr: Vec<Url>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_one_or_many_url",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub evm_addr: Vec<Url>,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub addresses: Vec<Address>,
 }
@@ -195,6 +225,38 @@ mod tests {
         let config = load(path);
         println!("{:?}", config);
         assert!(config.is_ok());
+    }
+
+    #[test]
+    fn parse_multi_endpoint_config() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/config/fixtures/chains-multi-endpoint.toml"
+        );
+
+        let config = load(path).expect("could not parse config");
+        let chains_map = config.chains_map();
+
+        let chain_a = chains_map.get(&"chain_A".to_string()).unwrap();
+        assert_eq!(
+            chain_a
+                .grpc_addr
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                "http://127.0.0.1:9090/",
+                "http://127.0.0.1:9091/",
+                "http://127.0.0.1:9092/",
+            ]
+        );
+
+        // Single-string form still parses as a one-element list.
+        let chain_b = chains_map.get(&"chain_B".to_string()).unwrap();
+        assert_eq!(chain_b.grpc_addr.len(), 1);
+
+        let chain_c = chains_map.get(&"chain_C".to_string()).unwrap();
+        assert_eq!(chain_c.evm_addr.len(), 2);
     }
 
     #[test]
