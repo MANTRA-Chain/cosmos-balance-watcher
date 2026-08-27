@@ -27,15 +27,20 @@ where
     Fut: Future<Output = Result<T>>,
 {
     let mut last_err = None;
-    for endpoint in endpoints {
+    let last_index = endpoints.len().saturating_sub(1);
+    for (i, endpoint) in endpoints.iter().enumerate() {
         let endpoint_str = endpoint.to_string();
         match op(endpoint_str.clone()).await {
             Ok(value) => return Ok((value, endpoint_str)),
             Err(e) => {
-                warn!(
-                    "query failed on endpoint {}: {}, trying next endpoint",
-                    endpoint_str, e
-                );
+                if i < last_index {
+                    warn!(
+                        "query failed on endpoint {}: {}, trying next endpoint",
+                        endpoint_str, e
+                    );
+                } else {
+                    warn!("query failed on endpoint {}: {}", endpoint_str, e);
+                }
                 last_err = Some(e);
             }
         }
@@ -57,31 +62,31 @@ impl CoinType {
         address: String,
         denom: String,
         contract_address: Option<String>,
-        grpc_addr: Vec<Url>,
-        evm_addr: Vec<Url>,
+        grpc_addrs: Vec<Url>,
+        evm_addrs: Vec<Url>,
     ) -> Result<String> {
         match self {
-            CoinType::COSMOS => try_endpoints(&grpc_addr, |endpoint| {
+            CoinType::COSMOS => try_endpoints(&grpc_addrs, |endpoint| {
                 get_cosmos_balance(address.clone(), denom.clone(), endpoint)
             })
             .await
             .map(|(balance, _)| balance),
             CoinType::CW20 => {
                 let contract_address = contract_address.unwrap();
-                try_endpoints(&grpc_addr, |endpoint| {
+                try_endpoints(&grpc_addrs, |endpoint| {
                     get_cw20_balance(address.clone(), contract_address.clone(), endpoint)
                 })
                 .await
                 .map(|(balance, _)| balance)
             }
-            CoinType::EVM => try_endpoints(&evm_addr, |endpoint| {
+            CoinType::EVM => try_endpoints(&evm_addrs, |endpoint| {
                 get_evm_balance(address.clone(), endpoint)
             })
             .await
             .map(|(balance, _)| balance),
             CoinType::EVM_ERC20 => {
                 let contract_address = contract_address.unwrap();
-                try_endpoints(&evm_addr, |endpoint| {
+                try_endpoints(&evm_addrs, |endpoint| {
                     get_evm_erc20_balance(address.clone(), contract_address.clone(), endpoint)
                 })
                 .await
@@ -93,18 +98,24 @@ impl CoinType {
         &self,
         address: String,
         coin_entities: &[CoinEntity],
-        grpc_addr: Vec<Url>,
-        evm_addr: Vec<Url>,
+        grpc_addrs: Vec<Url>,
+        evm_addrs: Vec<Url>,
     ) -> Result<(Vec<Coin>, String)> {
+        // `query_endpoint_url` is reported as the full configured endpoint list
+        // (not just whichever one happened to answer) so the account_query_status
+        // gauge keeps a single stable label series per address/coin_type, on both
+        // success and failure, instead of leaving stale series behind whenever
+        // fallback switches endpoints.
         match self {
-            CoinType::COSMOS => try_endpoints(&grpc_addr, |endpoint| {
+            CoinType::COSMOS => try_endpoints(&grpc_addrs, |endpoint| {
                 get_cosmos_balances(address.clone(), endpoint)
             })
             .await
+            .map(|(balances, _)| (balances, join_endpoints(&grpc_addrs)))
             .map_err(|e| {
-                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addr)).into()
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addrs)).into()
             }),
-            CoinType::CW20 => try_endpoints(&grpc_addr, |endpoint| {
+            CoinType::CW20 => try_endpoints(&grpc_addrs, |endpoint| {
                 let address = address.clone();
                 async move {
                     let mut coins = Vec::<Coin>::new();
@@ -122,30 +133,31 @@ impl CoinType {
                 }
             })
             .await
+            .map(|(coins, _)| (coins, join_endpoints(&grpc_addrs)))
             .map_err(|e| {
-                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addr)).into()
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&grpc_addrs)).into()
             }),
             CoinType::EVM => {
                 let denom = coin_entities.first().unwrap().denom.clone();
-                try_endpoints(&evm_addr, |endpoint| {
+                try_endpoints(&evm_addrs, |endpoint| {
                     get_evm_balance(address.clone(), endpoint)
                 })
                 .await
-                .map(|(balance, used_endpoint)| {
+                .map(|(balance, _)| {
                     (
                         vec![Coin {
                             denom,
                             amount: balance,
                         }],
-                        used_endpoint,
+                        join_endpoints(&evm_addrs),
                     )
                 })
                 .map_err(|e| {
-                    crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addr))
+                    crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addrs))
                         .into()
                 })
             }
-            CoinType::EVM_ERC20 => try_endpoints(&evm_addr, |endpoint| {
+            CoinType::EVM_ERC20 => try_endpoints(&evm_addrs, |endpoint| {
                 let address = address.clone();
                 async move {
                     let mut coins = Vec::<Coin>::new();
@@ -166,8 +178,9 @@ impl CoinType {
                 }
             })
             .await
+            .map(|(coins, _)| (coins, join_endpoints(&evm_addrs)))
             .map_err(|e| {
-                crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addr)).into()
+                crate::error::Error::query_error(e.to_string(), join_endpoints(&evm_addrs)).into()
             }),
         }
     }

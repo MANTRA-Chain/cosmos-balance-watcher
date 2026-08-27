@@ -10,13 +10,13 @@ use tendermint_rpc::Url;
 
 pub async fn account_status_collector(config: config::Config) {
     for chain_config in config.chains.iter() {
-        let grpc_addr = chain_config.grpc_addr.clone();
-        let evm_addr = chain_config.evm_addr.clone();
+        let grpc_addrs = chain_config.grpc_addrs.clone();
+        let evm_addrs = chain_config.evm_addrs.clone();
         let chain_id = chain_config.id.clone();
         for chain_address in chain_config.addresses.clone().iter() {
             tokio::task::spawn(track_account_status(
-                grpc_addr.clone(),
-                evm_addr.clone(),
+                grpc_addrs.clone(),
+                evm_addrs.clone(),
                 chain_id.clone(),
                 chain_address.clone(),
             ));
@@ -46,8 +46,8 @@ pub struct CoinEntity {
 }
 
 pub async fn track_account_status(
-    grpc_addr: Vec<Url>,
-    evm_addr: Vec<Url>,
+    grpc_addrs: Vec<Url>,
+    evm_addrs: Vec<Url>,
     chain_id: String,
     chain_address: config::Address,
 ) {
@@ -83,8 +83,8 @@ pub async fn track_account_status(
                 .get_balances(
                     address.clone(),
                     coin_entities,
-                    grpc_addr.clone(),
-                    evm_addr.clone(),
+                    grpc_addrs.clone(),
+                    evm_addrs.clone(),
                 )
                 .await
             {

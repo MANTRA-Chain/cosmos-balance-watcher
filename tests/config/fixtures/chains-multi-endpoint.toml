@@ -4,7 +4,7 @@ port = 9090
 
 [[chains]]
 id = 'chain_A'
-grpc_addr = ['http://127.0.0.1:9090', 'http://127.0.0.1:9091', 'http://127.0.0.1:9092']
+grpc_addrs = ['http://127.0.0.1:9090', 'http://127.0.0.1:9091', 'http://127.0.0.1:9092']
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
 role = 'personal'

@@ -81,18 +81,24 @@ impl Default for PrometheusConfig {
 #[serde(deny_unknown_fields)]
 pub struct ChainConfig {
     pub id: String,
+    /// `grpc_addr` is accepted as an alias for backward compatibility with
+    /// configs written before fallback support was added.
     #[serde(
+        alias = "grpc_addr",
         default,
         deserialize_with = "deserialize_one_or_many_url",
         skip_serializing_if = "Vec::is_empty"
     )]
-    pub grpc_addr: Vec<Url>,
+    pub grpc_addrs: Vec<Url>,
+    /// `evm_addr` is accepted as an alias for backward compatibility with
+    /// configs written before fallback support was added.
     #[serde(
+        alias = "evm_addr",
         default,
         deserialize_with = "deserialize_one_or_many_url",
         skip_serializing_if = "Vec::is_empty"
     )]
-    pub evm_addr: Vec<Url>,
+    pub evm_addrs: Vec<Url>,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub addresses: Vec<Address>,
 }
@@ -237,10 +243,11 @@ mod tests {
         let config = load(path).expect("could not parse config");
         let chains_map = config.chains_map();
 
+        // New `grpc_addrs` field name, array form.
         let chain_a = chains_map.get(&"chain_A".to_string()).unwrap();
         assert_eq!(
             chain_a
-                .grpc_addr
+                .grpc_addrs
                 .iter()
                 .map(|u| u.to_string())
                 .collect::<Vec<_>>(),
@@ -251,12 +258,14 @@ mod tests {
             ]
         );
 
-        // Single-string form still parses as a one-element list.
+        // Old `grpc_addr` field name (alias), single-string form still
+        // parses as a one-element list into the renamed field.
         let chain_b = chains_map.get(&"chain_B".to_string()).unwrap();
-        assert_eq!(chain_b.grpc_addr.len(), 1);
+        assert_eq!(chain_b.grpc_addrs.len(), 1);
 
+        // Old `evm_addr` field name (alias), array form.
         let chain_c = chains_map.get(&"chain_C".to_string()).unwrap();
-        assert_eq!(chain_c.evm_addr.len(), 2);
+        assert_eq!(chain_c.evm_addrs.len(), 2);
     }
 
     #[test]

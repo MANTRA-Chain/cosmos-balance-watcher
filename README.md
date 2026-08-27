@@ -3,15 +3,17 @@
 Query multiple native tokens and CW20 tokens balance for cosmos-sdk and native tokens balance for evm chains, and expose account balance status as prometheus metrics.
 One can send alert based on prometheus alerting rules. Default decimal place is 6 for all tokens.
 
-`grpc_addr` (cosmos-sdk chains) and `evm_addr` (evm chains) accept either a single endpoint or a list of endpoints:
+`grpc_addrs` (cosmos-sdk chains) and `evm_addrs` (evm chains) accept either a single endpoint or a list of endpoints:
 
 ```toml
-grpc_addr = 'https://grpc.dukong.mantrachain.io'
+grpc_addrs = 'https://grpc.dukong.mantrachain.io'
 # or, with fallback:
-grpc_addr = ['https://grpc.dukong.mantrachain.io', 'https://grpc.dukong-fallback.mantrachain.io']
+grpc_addrs = ['https://grpc.dukong.mantrachain.io', 'https://grpc.dukong-fallback.mantrachain.io']
 ```
 
 When a list is given, endpoints are tried in order on every refresh; if a query fails against one endpoint, the next one is tried, falling through the whole list.
+
+The old singular field names (`grpc_addr` / `evm_addr`) are still accepted for backward compatibility with existing configs.
 
 ## Build
 
@@ -29,7 +31,7 @@ port = 9090
 
 [[chains]]
 id = 'chain_A'
-grpc_addr = 'http://127.0.0.1:9090'
+grpc_addrs = 'http://127.0.0.1:9090'
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
 disable_balance = true
@@ -64,7 +66,7 @@ decimal_place = 6
 
 [[chains]]
 id = 'chain_B'
-grpc_addr = 'http://127.0.0.1:9090'
+grpc_addrs = 'http://127.0.0.1:9090'
 [[chains.addresses]]
 address = 'mantra1q040rm026jmpfmxdsj6q9phm9tdceepnsau6me'
 disable_balance = false
@@ -76,7 +78,7 @@ min_balance = '1000000000000000000000000000000000'
 
 [[chains]]
 id = '1'
-evm_addr = 'https://eth.llamarpc.com'
+evm_addrs = 'https://eth.llamarpc.com'
 [[chains.addresses]]
 address = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
 decimal_place = 18
